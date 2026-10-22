@@ -17,10 +17,12 @@ from backend.app.services.sqs_service import SQSService
 from backend.app.services.textract_service import TextractService
 from backend.app.services.bedrock_service import BedrockService
 from backend.app.services.ses_service import SESService
+from backend.app.services.cloudwatch_service import CloudWatchLoggingService
+from backend.app.services.sns_service import SNSService
 
 app = FastAPI(
     title="DocuCloud AI - Intelligent Document Processing Platform",
-    description="Hybrid AWS Architecture combining EC2, Lambda, S3, SQS, DynamoDB, Textract, Bedrock & SES.",
+    description="Hybrid AWS Architecture combining EC2, Lambda, S3, SQS, DynamoDB, Textract, Bedrock, SES, CloudWatch & SNS.",
     version="1.0.0"
 )
 
@@ -41,6 +43,8 @@ sqs_svc = SQSService()
 textract_svc = TextractService()
 bedrock_svc = BedrockService()
 ses_svc = SESService()
+cw_logger = CloudWatchLoggingService()
+sns_svc = SNSService()
 
 @app.get("/dashboard", tags=["UI"])
 def serve_dashboard():
@@ -136,6 +140,7 @@ async def upload_direct_file(
         # 3. Triage Logic: Heavy Document vs Fast Track
         if page_count > 5:
             # Route to SQS for EC2 Worker
+            cw_logger.log_event("api-server", f"Heavy document {doc_id} ('{file.filename}', {page_count} pages) dispatched to Amazon SQS", level="INFO")
             sqs_svc.send_heavy_processing_job(
                 document_id=doc_id,
                 s3_key=s3_key,
@@ -152,6 +157,7 @@ async def upload_direct_file(
             }
         else:
             # Fast Track: Process immediately
+            cw_logger.log_event("api-server", f"Processing lightweight receipt {doc_id} ('{file.filename}') synchronously", level="INFO")
             db_svc.update_status(document_id=doc_id, status=DocumentStatus.PROCESSING, processed_by="FAST_API_SYNC")
             extracted = textract_svc.analyze_document_from_s3(settings.s3_bucket_name, s3_key)
             insights = bedrock_svc.generate_document_insights(extracted)
@@ -162,6 +168,17 @@ async def upload_direct_file(
                 ai_insights=insights.model_dump(),
                 processed_by="FAST_API_SYNC"
             )
+            cw_logger.log_event("api-server", f"Completed extraction & audit for {doc_id}. Category: {insights.category}, Total: ${extracted.total_amount}", level="INFO")
+
+            # Dispatch Amazon SNS alert if compliance anomaly flagged
+            if insights.anomaly_detected:
+                sns_svc.publish_anomaly_alert(
+                    document_id=doc_id,
+                    vendor=extracted.vendor_name or "Unknown",
+                    total=extracted.total_amount or 0.0,
+                    anomaly_reason=insights.anomaly_reason or "Flagged transaction"
+                )
+                cw_logger.log_event("api-server", f"Dispatched Amazon SNS alert for document {doc_id}", level="WARN")
 
             # Optional SES email notification
             if notification_email:

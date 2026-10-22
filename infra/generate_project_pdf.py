@@ -81,8 +81,8 @@ def create_documentation_pdf():
 
     # Highlight Stats at Bottom
     p1.draw_rect(pymupdf.Rect(40, 625, 190, 685), color=CARD_BORDER, fill=CARD_BG)
-    p1.insert_text((50, 645), "10 AWS SERVICES", fontsize=11, fontname="helv", color=PRIMARY_COLOR)
-    p1.insert_text((50, 665), "Cohesive enterprise cloud architecture", fontsize=7.5, color=SECONDARY_COLOR)
+    p1.insert_text((50, 645), "14 AWS SERVICES", fontsize=11, fontname="helv", color=PRIMARY_COLOR)
+    p1.insert_text((50, 665), "Comprehensive cloud architecture suite", fontsize=7.5, color=SECONDARY_COLOR)
 
     p1.draw_rect(pymupdf.Rect(205, 625, 375, 685), color=CARD_BORDER, fill=CARD_BG)
     p1.insert_text((215, 645), "100% FREE TIER SAFE", fontsize=11, fontname="helv", color=ACCENT_GREEN)

@@ -16,6 +16,7 @@ from backend.app.services.dynamodb_service import DynamoDBService
 from backend.app.services.textract_service import TextractService
 from backend.app.services.bedrock_service import BedrockService
 from backend.app.services.ses_service import SESService
+from backend.app.services.cloudwatch_service import CloudWatchLoggingService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,6 +31,7 @@ def run_worker():
     textract_svc = TextractService()
     bedrock_svc = BedrockService()
     ses_svc = SESService()
+    cw_logger = CloudWatchLoggingService()
 
     logger.info("==================================================")
     logger.info("DocuCloud EC2 Heavy Worker Daemon started.")
@@ -57,6 +59,7 @@ def run_worker():
                 page_count = body.get("page_count", 1)
 
                 logger.info(f"--> Received Job for doc: {doc_id} ('{filename}', {page_count} pages)")
+                cw_logger.log_event("ec2-worker", f"Worker picked up task for doc {doc_id} ('{filename}', {page_count} pages) from SQS", level="INFO")
 
                 try:
                     # 1. Update status to PROCESSING
@@ -85,9 +88,11 @@ def run_worker():
                     # 5. Delete message from SQS (successful completion)
                     sqs_svc.delete_message(receipt_handle)
                     logger.info(f"✓ Job {doc_id} successfully completed and removed from SQS.")
+                    cw_logger.log_event("ec2-worker", f"Successfully completed job {doc_id}. Category: {insights.category}, Total: ${extracted.total_amount}", level="INFO")
 
                 except Exception as proc_err:
                     logger.error(f"Error processing document {doc_id}: {proc_err}", exc_info=True)
+                    cw_logger.log_event("ec2-worker", f"Failed processing document {doc_id}: {proc_err}", level="ERROR")
                     db_svc.update_status(
                         document_id=doc_id,
                         status=DocumentStatus.FAILED,
